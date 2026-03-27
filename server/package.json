@@ -9,6 +9,7 @@
     "dev": "ts-node src/index.ts"
   },
   "dependencies": {
+    "@azure/ai-language-text": "^1.1.0",
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.26.0",
     "cors": "^2.8.5",

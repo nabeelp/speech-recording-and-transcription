@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback } from 'react';
 import * as speechsdk from 'microsoft-cognitiveservices-speech-sdk';
 import { getTokenOrRefresh } from '../services/tokenService';
+import { detectPii, PiiEntity } from '../services/apiService';
 
 export interface TranscriptEntry {
   id: number;
@@ -8,6 +9,7 @@ export interface TranscriptEntry {
   speakerId: string;
   isFinal: boolean;
   timestamp: Date;
+  piiEntities?: PiiEntity[];
 }
 
 interface UseSpeechRecognitionReturn {
@@ -59,15 +61,27 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       };
 
       // Final transcribed results with speaker ID
-      transcriber.transcribed = (_s, e) => {
+      transcriber.transcribed = async (_s, e) => {
         if (e.result.reason === speechsdk.ResultReason.RecognizedSpeech && e.result.text) {
           entryIdRef.current += 1;
+          
+          // Detect PII in the transcribed text
+          let piiEntities: PiiEntity[] = [];
+          try {
+            const piiResult = await detectPii(e.result.text);
+            piiEntities = piiResult.entities;
+          } catch (err) {
+            console.error('Failed to detect PII:', err);
+            // Continue without PII detection if it fails
+          }
+
           const entry: TranscriptEntry = {
             id: entryIdRef.current,
             text: e.result.text,
             speakerId: e.result.speakerId || 'Unknown',
             isFinal: true,
             timestamp: new Date(),
+            piiEntities,
           };
           setTranscriptEntries((prev) => [...prev, entry]);
           setInterimText('');

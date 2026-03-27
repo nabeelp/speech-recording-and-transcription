@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { TranscriptEntry } from '../hooks/useSpeechRecognition';
+import { PiiEntity } from '../services/apiService';
 
 const ADVISOR_COLOR = '#60a5fa'; // blue
 const CLIENT_COLOR = '#34d399'; // green
@@ -18,6 +19,53 @@ function getSpeakerColor(role: 'advisor' | 'client' | 'unknown'): string {
   if (role === 'advisor') return ADVISOR_COLOR;
   if (role === 'client') return CLIENT_COLOR;
   return UNKNOWN_COLOR;
+}
+
+/**
+ * Renders text with PII entities highlighted in red
+ */
+function renderTextWithPii(text: string, piiEntities?: PiiEntity[]): React.ReactNode {
+  if (!piiEntities || piiEntities.length === 0) {
+    return text;
+  }
+
+  const segments: React.ReactNode[] = [];
+  let lastOffset = 0;
+
+  // Sort entities by offset to process them in order
+  const sortedEntities = [...piiEntities].sort((a, b) => a.offset - b.offset);
+
+  sortedEntities.forEach((entity, index) => {
+    // Add text before the PII entity
+    if (entity.offset > lastOffset) {
+      segments.push(text.substring(lastOffset, entity.offset));
+    }
+
+    // Add the PII entity with highlighting
+    segments.push(
+      <span
+        key={`pii-${index}`}
+        style={{
+          color: '#ef4444',
+          fontWeight: 'bold',
+          textDecoration: 'underline',
+          textDecorationStyle: 'wavy',
+        }}
+        title={`PII: ${entity.category} (confidence: ${(entity.confidenceScore * 100).toFixed(0)}%)`}
+      >
+        {entity.text}
+      </span>
+    );
+
+    lastOffset = entity.offset + entity.length;
+  });
+
+  // Add remaining text after the last PII entity
+  if (lastOffset < text.length) {
+    segments.push(text.substring(lastOffset));
+  }
+
+  return <>{segments}</>;
 }
 
 export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
@@ -63,7 +111,9 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
               >
                 {label}
               </span>
-              <span style={styles.finalText}>{entry.text}</span>
+              <span style={styles.finalText}>
+                {renderTextWithPii(entry.text, entry.piiEntities)}
+              </span>
             </div>
           );
         })}

@@ -1,3 +1,34 @@
+export interface PiiEntity {
+  text: string;
+  category: string;
+  offset: number;
+  length: number;
+  confidenceScore: number;
+}
+
+export interface PiiDetectionResult {
+  text: string;
+  entities: PiiEntity[];
+  redactedText: string;
+}
+
+export async function detectPii(text: string): Promise<PiiDetectionResult> {
+  const response = await fetch('/api/detect-pii', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to detect PII');
+  }
+
+  return response.json();
+}
+
 export async function uploadAudio(
   audioBlob: Blob,
   transcript: string

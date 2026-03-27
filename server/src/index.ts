@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { speechTokenRouter } from './routes/speechToken';
 import { audioUploadRouter } from './routes/audioUpload';
+import { piiDetectionRouter } from './routes/piiDetection';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -15,6 +16,7 @@ app.use(express.json());
 
 app.use('/api', speechTokenRouter);
 app.use('/api', audioUploadRouter);
+app.use('/api', piiDetectionRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
