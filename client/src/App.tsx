@@ -4,12 +4,14 @@ import { RecordingControls } from './components/RecordingControls';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
+import { useSpeakerMap } from './hooks/useSpeakerMap';
 import { uploadAudio } from './services/apiService';
 
 function App() {
   const {
     isListening,
     interimText,
+    interimSpeakerId,
     transcriptEntries,
     error: speechError,
     startListening,
@@ -23,6 +25,8 @@ function App() {
     stopRecording,
     error: recorderError,
   } = useAudioRecorder();
+
+  const { getLabel, getRole, setAdvisor } = useSpeakerMap();
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -42,7 +46,7 @@ function App() {
     // Stop audio recording and get the blob
     try {
       const audioBlob = await stopRecording();
-      const transcript = getFullTranscript();
+      const transcript = getFullTranscript(getLabel);
 
       // Upload audio + transcript to backend
       setIsUploading(true);
@@ -74,6 +78,10 @@ function App() {
       <TranscriptDisplay
         entries={transcriptEntries}
         interimText={interimText}
+        interimSpeakerId={interimSpeakerId}
+        getLabel={getLabel}
+        getRole={getRole}
+        onSetAdvisor={setAdvisor}
       />
 
       <div style={styles.controls}>

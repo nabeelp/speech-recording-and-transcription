@@ -5,6 +5,7 @@ import { getTokenOrRefresh } from '../services/tokenService';
 export interface TranscriptEntry {
   id: number;
   text: string;
+  speakerId: string;
   isFinal: boolean;
   timestamp: Date;
 }
@@ -12,20 +13,22 @@ export interface TranscriptEntry {
 interface UseSpeechRecognitionReturn {
   isListening: boolean;
   interimText: string;
+  interimSpeakerId: string;
   transcriptEntries: TranscriptEntry[];
   error: string | null;
   startListening: () => Promise<void>;
   stopListening: () => void;
-  getFullTranscript: () => string;
+  getFullTranscript: (labelFn?: (rawId: string) => string) => string;
 }
 
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
+  const [interimSpeakerId, setInterimSpeakerId] = useState('');
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const recognizerRef = useRef<speechsdk.SpeechRecognizer | null>(null);
+  const transcriberRef = useRef<speechsdk.ConversationTranscriber | null>(null);
   const entryIdRef = useRef(0);
   const tokenRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -33,6 +36,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     try {
       setError(null);
       setInterimText('');
+      setInterimSpeakerId('');
 
       const tokenData = await getTokenOrRefresh();
       // Use fromEndpoint for Foundry-based Speech resources
@@ -43,34 +47,35 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       speechConfig.speechRecognitionLanguage = 'en-US';
 
       const audioConfig = speechsdk.AudioConfig.fromDefaultMicrophoneInput();
-      const recognizer = new speechsdk.SpeechRecognizer(speechConfig, audioConfig);
-      recognizerRef.current = recognizer;
+      const transcriber = new speechsdk.ConversationTranscriber(speechConfig, audioConfig);
+      transcriberRef.current = transcriber;
 
-      // Intermediate results (partial/in-progress)
-      recognizer.recognizing = (_s, e) => {
-        if (e.result.reason === speechsdk.ResultReason.RecognizingSpeech) {
+      // Intermediate results (partial/in-progress) with speaker ID
+      transcriber.transcribing = (_s, e) => {
+        if (e.result.text) {
           setInterimText(e.result.text);
+          setInterimSpeakerId(e.result.speakerId || '');
         }
       };
 
-      // Final recognized results
-      recognizer.recognized = (_s, e) => {
+      // Final transcribed results with speaker ID
+      transcriber.transcribed = (_s, e) => {
         if (e.result.reason === speechsdk.ResultReason.RecognizedSpeech && e.result.text) {
           entryIdRef.current += 1;
           const entry: TranscriptEntry = {
             id: entryIdRef.current,
             text: e.result.text,
+            speakerId: e.result.speakerId || 'Unknown',
             isFinal: true,
             timestamp: new Date(),
           };
           setTranscriptEntries((prev) => [...prev, entry]);
           setInterimText('');
-        } else if (e.result.reason === speechsdk.ResultReason.NoMatch) {
-          // Silence or unrecognized — no action
+          setInterimSpeakerId('');
         }
       };
 
-      recognizer.canceled = (_s, e) => {
+      transcriber.canceled = (_s, e) => {
         if (e.reason === speechsdk.CancellationReason.Error) {
           setError(`Speech recognition error: ${e.errorDetails}`);
         }
@@ -78,17 +83,17 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         cleanup();
       };
 
-      recognizer.sessionStopped = () => {
+      transcriber.sessionStopped = () => {
         setIsListening(false);
         cleanup();
       };
 
-      recognizer.startContinuousRecognitionAsync(
+      transcriber.startTranscribingAsync(
         () => {
           setIsListening(true);
         },
         (err) => {
-          setError(`Failed to start recognition: ${err}`);
+          setError(`Failed to start transcription: ${err}`);
           cleanup();
         }
       );
@@ -97,7 +102,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       tokenRefreshTimerRef.current = setInterval(async () => {
         try {
           const newToken = await getTokenOrRefresh();
-          recognizer.authorizationToken = newToken.token;
+          transcriber.authorizationToken = newToken.token;
         } catch {
           // Token refresh failure — recognition may stop when current token expires
         }
@@ -115,20 +120,21 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   }, []);
 
   const stopListening = useCallback(() => {
-    const recognizer = recognizerRef.current;
-    if (recognizer) {
-      recognizer.stopContinuousRecognitionAsync(
+    const transcriber = transcriberRef.current;
+    if (transcriber) {
+      transcriber.stopTranscribingAsync(
         () => {
-          recognizer.close();
-          recognizerRef.current = null;
+          transcriber.close();
+          transcriberRef.current = null;
           setIsListening(false);
           setInterimText('');
+          setInterimSpeakerId('');
           cleanup();
         },
         (err) => {
-          console.error('Error stopping recognition:', err);
-          recognizer.close();
-          recognizerRef.current = null;
+          console.error('Error stopping transcription:', err);
+          transcriber.close();
+          transcriberRef.current = null;
           setIsListening(false);
           cleanup();
         }
@@ -136,13 +142,19 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     }
   }, [cleanup]);
 
-  const getFullTranscript = useCallback(() => {
-    return transcriptEntries.map((e) => e.text).join(' ');
+  const getFullTranscript = useCallback((labelFn?: (rawId: string) => string) => {
+    return transcriptEntries
+      .map((e) => {
+        const label = labelFn ? labelFn(e.speakerId) : e.speakerId;
+        return `[${label}] ${e.text}`;
+      })
+      .join('\n');
   }, [transcriptEntries]);
 
   return {
     isListening,
     interimText,
+    interimSpeakerId,
     transcriptEntries,
     error,
     startListening,
