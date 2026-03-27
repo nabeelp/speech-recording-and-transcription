@@ -87,7 +87,7 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.heading}>Live Transcript</h2>
+      <h2 style={styles.heading}>🎤 Live Transcript</h2>
       <div style={styles.transcriptBox}>
         {!hasContent && (
           <p style={styles.placeholder}>
@@ -144,22 +144,26 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
 const styles: Record<string, React.CSSProperties> = {
   container: {
     width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
   },
   heading: {
     fontSize: '1rem',
     fontWeight: 600,
     color: '#94a3b8',
+    margin: 0,
     marginBottom: '0.75rem',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
+    flexShrink: 0,
   },
   transcriptBox: {
     backgroundColor: '#1e293b',
     border: '1px solid #334155',
-    borderRadius: '8px',
+    borderRadius: '12px',
     padding: '1.25rem',
-    minHeight: '300px',
-    maxHeight: '500px',
+    flex: 1,
     overflowY: 'auto',
   },
   placeholder: {
