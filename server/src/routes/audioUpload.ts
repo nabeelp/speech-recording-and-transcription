@@ -45,7 +45,12 @@ audioUploadRouter.post(
       });
     } catch (err) {
       console.error('Error uploading audio:', err);
-      res.status(500).json({ error: 'Failed to upload audio to storage.' });
+      res.status(500).json({
+        error: 'Failed to upload audio to storage.',
+        ...(process.env.NODE_ENV !== 'production' && {
+          details: err instanceof Error ? err.message : String(err),
+        }),
+      });
     }
   }
 );

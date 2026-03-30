@@ -95,11 +95,11 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
           </p>
         )}
 
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
           const role = getRole(entry.speakerId);
           const label = getLabel(entry.speakerId);
           return (
-            <div key={entry.id} style={styles.entryRow}>
+            <div key={`${entry.id}-${index}`} style={styles.entryRow}>
               <span
                 style={{
                   ...styles.speakerBadge,

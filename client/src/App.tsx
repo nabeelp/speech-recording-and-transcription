@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { StatusIndicator } from './components/StatusIndicator';
 import { RecordingControls } from './components/RecordingControls';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
@@ -32,7 +32,7 @@ function App() {
     error: recorderError,
   } = useAudioRecorder();
 
-  const { getLabel, getRole, setAdvisor } = useSpeakerMap();
+  const { getLabel, getRole, setAdvisor, registerSpeaker } = useSpeakerMap();
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -51,6 +51,22 @@ function App() {
 
   const error = speechError || recorderError;
   const canStartRecording = clientInfo !== null;
+
+  useEffect(() => {
+    const speakerIds = new Set<string>();
+
+    transcriptEntries.forEach((entry) => {
+      speakerIds.add(entry.speakerId);
+    });
+
+    if (interimSpeakerId) {
+      speakerIds.add(interimSpeakerId);
+    }
+
+    speakerIds.forEach((speakerId) => {
+      registerSpeaker(speakerId);
+    });
+  }, [transcriptEntries, interimSpeakerId, registerSpeaker]);
 
   const handleClientSelected = useCallback((info: ClientInfo) => {
     setClientInfo(info);
@@ -91,7 +107,7 @@ function App() {
     } finally {
       setIsUploading(false);
     }
-  }, [stopListening, stopRecording, getFullTranscript]);
+  }, [stopListening, stopRecording, getFullTranscript, getLabel]);
 
   return (
     <div style={styles.app}>

@@ -11,6 +11,8 @@ interface UseSpeakerMapReturn {
   getLabel: (rawSpeakerId: string) => string;
   /** Get the role for a raw speaker ID */
   getRole: (rawSpeakerId: string) => 'advisor' | 'client' | 'unknown';
+  /** Register a speaker ID when observed in the transcript */
+  registerSpeaker: (rawSpeakerId: string) => void;
   /** Set which raw speaker ID is the Advisor */
   setAdvisor: (rawSpeakerId: string) => void;
   /** The raw speaker ID currently assigned as Advisor (null if none yet) */
@@ -20,65 +22,63 @@ interface UseSpeakerMapReturn {
 }
 
 export function useSpeakerMap(): UseSpeakerMapReturn {
-  const [advisorId, setAdvisorId] = useState<string | null>(null);
   const [speakers, setSpeakers] = useState<SpeakerRole[]>([]);
   const clientCounterRef = useRef(0);
+  const advisorId = speakers.find((s) => s.role === 'advisor')?.rawId ?? null;
 
-  const ensureSpeaker = useCallback(
-    (rawId: string): SpeakerRole => {
-      // Check if already tracked
-      const existing = speakers.find((s) => s.rawId === rawId);
-      if (existing) return existing;
+  const registerSpeaker = useCallback((rawSpeakerId: string) => {
+    if (!rawSpeakerId || rawSpeakerId === 'Unknown') {
+      return;
+    }
 
-      // First speaker becomes Advisor automatically
-      const isFirstSpeaker = speakers.length === 0;
-      let role: 'advisor' | 'client';
-      let label: string;
-
-      if (isFirstSpeaker) {
-        role = 'advisor';
-        label = 'Advisor';
-        setAdvisorId(rawId);
-      } else {
-        role = 'client';
-        clientCounterRef.current += 1;
-        label = `Client ${clientCounterRef.current}`;
+    setSpeakers((prev) => {
+      if (prev.some((s) => s.rawId === rawSpeakerId)) {
+        return prev;
       }
 
-      const newSpeaker: SpeakerRole = { rawId, label, role };
-      setSpeakers((prev) => [...prev, newSpeaker]);
-      return newSpeaker;
-    },
-    [speakers]
-  );
+      if (prev.length === 0) {
+        return [...prev, { rawId: rawSpeakerId, label: 'Advisor', role: 'advisor' }];
+      }
+
+      clientCounterRef.current += 1;
+      return [
+        ...prev,
+        {
+          rawId: rawSpeakerId,
+          label: `Client ${clientCounterRef.current}`,
+          role: 'client',
+        },
+      ];
+    });
+  }, []);
 
   const getLabel = useCallback(
     (rawSpeakerId: string): string => {
       if (!rawSpeakerId || rawSpeakerId === 'Unknown') return 'Unknown';
       const speaker = speakers.find((s) => s.rawId === rawSpeakerId);
-      if (speaker) return speaker.label;
-      // Auto-register on first encounter
-      return ensureSpeaker(rawSpeakerId).label;
+      return speaker ? speaker.label : 'Unknown';
     },
-    [speakers, ensureSpeaker]
+    [speakers]
   );
 
   const getRole = useCallback(
     (rawSpeakerId: string): 'advisor' | 'client' | 'unknown' => {
       if (!rawSpeakerId || rawSpeakerId === 'Unknown') return 'unknown';
       const speaker = speakers.find((s) => s.rawId === rawSpeakerId);
-      if (speaker) return speaker.role;
-      return ensureSpeaker(rawSpeakerId).role;
+      return speaker ? speaker.role : 'unknown';
     },
-    [speakers, ensureSpeaker]
+    [speakers]
   );
 
   const setAdvisor = useCallback(
     (rawSpeakerId: string) => {
-      setAdvisorId(rawSpeakerId);
       clientCounterRef.current = 0;
 
       setSpeakers((prev) => {
+        if (!prev.some((s) => s.rawId === rawSpeakerId)) {
+          return prev;
+        }
+
         // Reassign roles: selected becomes Advisor, all others become Client N
         return prev.map((s) => {
           if (s.rawId === rawSpeakerId) {
@@ -96,5 +96,5 @@ export function useSpeakerMap(): UseSpeakerMapReturn {
     []
   );
 
-  return { getLabel, getRole, setAdvisor, advisorId, speakers };
+  return { getLabel, getRole, registerSpeaker, setAdvisor, advisorId, speakers };
 }

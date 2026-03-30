@@ -36,6 +36,7 @@ export function useNBAAnalysis(
   
   const lastAnalyzedTranscriptRef = useRef('');
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAnalyzingRef = useRef(false);
 
   // Clear suggestions when recording stops
   useEffect(() => {
@@ -49,6 +50,11 @@ export function useNBAAnalysis(
 
   // Analyze transcript periodically during recording
   useEffect(() => {
+    if (analysisTimerRef.current) {
+      clearTimeout(analysisTimerRef.current);
+      analysisTimerRef.current = null;
+    }
+
     if (!isRecording || !clientInfo || transcript.length < minTranscriptLength) {
       return;
     }
@@ -62,10 +68,11 @@ export function useNBAAnalysis(
 
     const performAnalysis = async () => {
       // Don't analyze if already analyzing
-      if (isAnalyzing) {
+      if (isAnalyzingRef.current) {
         return;
       }
 
+      isAnalyzingRef.current = true;
       setIsAnalyzing(true);
       setError(null);
 
@@ -95,13 +102,14 @@ export function useNBAAnalysis(
         console.error('NBA analysis failed:', err);
         setError(err instanceof Error ? err.message : 'Analysis failed');
       } finally {
+        isAnalyzingRef.current = false;
         setIsAnalyzing(false);
       }
     };
 
     // Schedule the next analysis
     analysisTimerRef.current = setTimeout(() => {
-      performAnalysis();
+      void performAnalysis();
     }, analysisInterval);
 
     return () => {
@@ -116,7 +124,6 @@ export function useNBAAnalysis(
     minTranscriptLength,
     analysisInterval,
     dismissedIds,
-    isAnalyzing,
   ]);
 
   const dismissSuggestion = useCallback((id: string) => {

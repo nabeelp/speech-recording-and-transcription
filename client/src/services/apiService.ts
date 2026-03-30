@@ -68,8 +68,16 @@ export async function uploadAudio(
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Failed to upload audio');
+    let message = 'Failed to upload audio';
+
+    try {
+      const err = await response.json();
+      message = err.error || err.details || message;
+    } catch {
+      message = response.statusText || message;
+    }
+
+    throw new Error(message);
   }
 
   return response.json();
