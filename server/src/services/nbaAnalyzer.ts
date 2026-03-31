@@ -1,5 +1,5 @@
-import { AzureOpenAI } from 'openai';
-import { DefaultAzureCredential } from '@azure/identity';
+import { OpenAI } from 'openai';
+import { getBearerTokenProvider, DefaultAzureCredential } from '@azure/identity';
 import { ClientInfo } from './clientDatabase';
 
 export interface NBASuggestion {
@@ -63,15 +63,13 @@ async function generateNBAWithAzureOpenAI(
   }
 
   // Use DefaultAzureCredential for authentication (supports Entra ID)
-  const credential = new DefaultAzureCredential();
-  const scope = 'https://cognitiveservices.azure.com/.default';
-  const tokenResponse = await credential.getToken(scope);
+  const tokenProvider = getBearerTokenProvider(
+    new DefaultAzureCredential(),
+    'https://cognitiveservices.azure.com/.default');
 
-  const client = new AzureOpenAI({
-    endpoint,
-    apiKey: tokenResponse.token,
-    deployment,
-    apiVersion: '2024-08-01-preview',
+  const client = new OpenAI({
+    baseURL: endpoint ,
+    apiKey: tokenProvider
   });
 
   const systemPrompt = `You are an AI assistant for South African financial advisors that analyzes client conversations in real-time and suggests Next Best Actions (NBAs).
