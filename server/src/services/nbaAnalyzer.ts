@@ -104,21 +104,24 @@ ${clientInfo.goals.map(goal => `  • ${goal}`).join('\n')}
 CONVERSATION TRANSCRIPT:
 ${transcript}
 
-Provide your response as a JSON array with this exact structure:
-[
-  {
-    "action": "Brief, specific action for the advisor to take (max 80 chars)",
-    "category": "investment" | "protection" | "planning" | "account",
-    "confidence": 0.0 to 1.0 (how confident you are this is relevant),
-    "reason": "Brief explanation why this is relevant now (max 120 chars)",
-    "priority": "high" | "medium" | "low",
-    "triggerKeywords": ["keyword1", "keyword2"] (words from transcript that triggered this)
-  }
-]
+Provide your response as a JSON object with this exact structure:
+{
+  "suggestions": [
+    {
+      "action": "Brief, specific action for the advisor to take (max 80 chars)",
+      "category": "investment" | "protection" | "planning" | "account",
+      "confidence": 0.0 to 1.0 (how confident you are this is relevant),
+      "reason": "Brief explanation why this is relevant now (max 120 chars)",
+      "priority": "high" | "medium" | "low",
+      "triggerKeywords": ["keyword1", "keyword2"] (words from transcript that triggered this)
+    }
+  ]
+}
 
-IMPORTANT: 
-- Return ONLY the JSON array, no other text
-- Generate 2-4 suggestions maximum
+IMPORTANT:
+- Return ONLY the JSON object, no other text
+- If the conversation does not contain enough information to generate meaningful suggestions, return {"suggestions": []}
+- Generate 2-4 suggestions maximum when actions are warranted
 - Confidence should be 0.6-0.95 (be realistic)
 - Priority "high" = urgent/time-sensitive, "medium" = important, "low" = nice to have
 - TriggerKeywords should be actual words/phrases from the transcript`;
@@ -143,14 +146,16 @@ IMPORTANT:
     // Parse the JSON response
     const parsed = JSON.parse(content);
     
-    // Handle both array and object with array property
+    // Handle object with suggestions array property, or fall back to empty
     let suggestions: OpenAINBASuggestion[];
-    if (Array.isArray(parsed)) {
-      suggestions = parsed;
-    } else if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+    if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
       suggestions = parsed.suggestions;
+    } else if (Array.isArray(parsed)) {
+      // Defensive: bare array shouldn't occur with json_object format but handle gracefully
+      suggestions = parsed;
     } else {
-      throw new Error('Unexpected response format from Azure OpenAI');
+      // No recognisable structure (e.g. {} or {"message": "..."}): no actions available
+      suggestions = [];
     }
 
     // Validate and clean the suggestions
