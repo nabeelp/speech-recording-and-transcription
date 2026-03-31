@@ -9,6 +9,7 @@ interface UseNBAAnalysisOptions {
 interface UseNBAAnalysisReturn {
   suggestions: NBASuggestion[];
   isAnalyzing: boolean;
+  nextAnalysisIn: number; // seconds until next scheduled analysis (0 when not recording)
   error: string | null;
   dismissSuggestion: (id: string) => void;
   acceptSuggestion: (id: string) => void;
@@ -31,12 +32,20 @@ export function useNBAAnalysis(
 
   const [suggestions, setSuggestions] = useState<NBASuggestion[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [nextAnalysisIn, setNextAnalysisIn] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  
+
   const lastAnalyzedTranscriptRef = useRef('');
-  const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAnalyzingRef = useRef(false);
+
+  // Refs so the interval callback always reads the latest values without re-registering
+  const transcriptRef = useRef(transcript);
+  const clientInfoRef = useRef(clientInfo);
+  const dismissedIdsRef = useRef(dismissedIds);
+  useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+  useEffect(() => { clientInfoRef.current = clientInfo; }, [clientInfo]);
+  useEffect(() => { dismissedIdsRef.current = dismissedIds; }, [dismissedIds]);
 
   // Clear suggestions when recording stops
   useEffect(() => {
@@ -45,30 +54,29 @@ export function useNBAAnalysis(
       setDismissedIds(new Set());
       lastAnalyzedTranscriptRef.current = '';
       setError(null);
+      setNextAnalysisIn(0);
     }
   }, [isRecording]);
 
-  // Analyze transcript periodically during recording
+  // Fixed-interval analysis loop — decoupled from transcript renders so the
+  // timer is never reset by incoming speech entries.
   useEffect(() => {
-    if (analysisTimerRef.current) {
-      clearTimeout(analysisTimerRef.current);
-      analysisTimerRef.current = null;
-    }
+    if (!isRecording) return;
 
-    if (!isRecording || !clientInfo || transcript.length < minTranscriptLength) {
-      return;
-    }
-
-    // Check if transcript has changed significantly since last analysis
-    const transcriptChanged = transcript !== lastAnalyzedTranscriptRef.current;
-    
-    if (!transcriptChanged) {
-      return;
-    }
+    const intervalSeconds = analysisInterval / 1000;
+    let secondsLeft = intervalSeconds;
+    setNextAnalysisIn(secondsLeft);
 
     const performAnalysis = async () => {
-      // Don't analyze if already analyzing
-      if (isAnalyzingRef.current) {
+      const currentTranscript = transcriptRef.current;
+      const currentClientInfo = clientInfoRef.current;
+
+      if (
+        isAnalyzingRef.current ||
+        !currentClientInfo ||
+        currentTranscript.length < minTranscriptLength ||
+        currentTranscript === lastAnalyzedTranscriptRef.current
+      ) {
         return;
       }
 
@@ -77,24 +85,19 @@ export function useNBAAnalysis(
       setError(null);
 
       try {
-        const result = await analyzeNBA(transcript, clientInfo);
-        lastAnalyzedTranscriptRef.current = transcript;
+        const result = await analyzeNBA(currentTranscript, currentClientInfo);
+        lastAnalyzedTranscriptRef.current = currentTranscript;
 
-        // Filter out dismissed suggestions and duplicates
         const newSuggestions = result.suggestions.filter(
-          (s) => !dismissedIds.has(s.id)
+          (s) => !dismissedIdsRef.current.has(s.id)
         );
 
-        // Update suggestions, keeping only the top 3 by priority and confidence
         const sortedSuggestions = newSuggestions.sort((a, b) => {
           const priorityWeight = { high: 3, medium: 2, low: 1 };
-          const aPriority = priorityWeight[a.priority];
-          const bPriority = priorityWeight[b.priority];
-
-          if (aPriority === bPriority) {
-            return b.confidence - a.confidence;
-          }
-          return bPriority - aPriority;
+          return (
+            priorityWeight[b.priority] - priorityWeight[a.priority] ||
+            b.confidence - a.confidence
+          );
         });
 
         setSuggestions(sortedSuggestions.slice(0, 3));
@@ -107,24 +110,20 @@ export function useNBAAnalysis(
       }
     };
 
-    // Schedule the next analysis
-    analysisTimerRef.current = setTimeout(() => {
-      void performAnalysis();
-    }, analysisInterval);
+    const ticker = setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        secondsLeft = intervalSeconds;
+        void performAnalysis();
+      }
+      setNextAnalysisIn(secondsLeft);
+    }, 1000);
 
     return () => {
-      if (analysisTimerRef.current) {
-        clearTimeout(analysisTimerRef.current);
-      }
+      clearInterval(ticker);
+      setNextAnalysisIn(0);
     };
-  }, [
-    transcript,
-    clientInfo,
-    isRecording,
-    minTranscriptLength,
-    analysisInterval,
-    dismissedIds,
-  ]);
+  }, [isRecording, analysisInterval, minTranscriptLength]);
 
   const dismissSuggestion = useCallback((id: string) => {
     setDismissedIds((prev) => new Set([...prev, id]));
@@ -142,6 +141,7 @@ export function useNBAAnalysis(
   return {
     suggestions,
     isAnalyzing,
+    nextAnalysisIn,
     error,
     dismissSuggestion,
     acceptSuggestion,

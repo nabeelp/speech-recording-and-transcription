@@ -44,6 +44,7 @@ function App() {
   const {
     suggestions,
     isAnalyzing,
+    nextAnalysisIn,
     error: nbaError,
     dismissSuggestion,
     acceptSuggestion,
@@ -153,8 +154,12 @@ function App() {
             <div style={styles.nbaColumn}>
               <div style={styles.nbaHeader}>
                 <h2 style={styles.nbaTitle}>💡 Next Best Actions</h2>
-                {isAnalyzing && (
-                  <span style={styles.analyzingBadge}>Analyzing...</span>
+                {(isRecording || isListening) && (
+                  isAnalyzing ? (
+                    <span style={styles.analyzingBadge}>⏳ Analyzing...</span>
+                  ) : nextAnalysisIn > 0 ? (
+                    <span style={styles.countdownBadge}>🔍 Next scan in {nextAnalysisIn}s</span>
+                  ) : null
                 )}
               </div>
               <div style={styles.nbaContent}>
@@ -288,6 +293,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
     fontSize: '0.75rem',
     fontWeight: 600,
+  },
+  countdownBadge: {
+    padding: '0.25rem 0.75rem',
+    backgroundColor: '#1e3a5f',
+    color: '#93c5fd',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    border: '1px solid #3b82f6',
   },
   nbaError: {
     padding: '0.75rem',

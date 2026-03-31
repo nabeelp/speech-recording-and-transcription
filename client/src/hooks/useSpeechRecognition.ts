@@ -64,28 +64,32 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       transcriber.transcribed = async (_s, e) => {
         if (e.result.reason === speechsdk.ResultReason.RecognizedSpeech && e.result.text) {
           entryIdRef.current += 1;
-          
-          // Detect PII in the transcribed text
-          let piiEntities: PiiEntity[] = [];
-          try {
-            const piiResult = await detectPii(e.result.text);
-            piiEntities = piiResult.entities;
-          } catch (err) {
-            console.error('Failed to detect PII:', err);
-            // Continue without PII detection if it fails
-          }
+          const entryId = entryIdRef.current;
 
+          // Add entry to state immediately so the transcript appears without waiting for PII detection
           const entry: TranscriptEntry = {
-            id: entryIdRef.current,
+            id: entryId,
             text: e.result.text,
             speakerId: e.result.speakerId || 'Unknown',
             isFinal: true,
             timestamp: new Date(),
-            piiEntities,
+            piiEntities: undefined,
           };
           setTranscriptEntries((prev) => [...prev, entry]);
           setInterimText('');
           setInterimSpeakerId('');
+
+          // Detect PII asynchronously and patch the entry when ready
+          try {
+            const piiResult = await detectPii(e.result.text);
+            setTranscriptEntries((prev) =>
+              prev.map((item) =>
+                item.id === entryId ? { ...item, piiEntities: piiResult.entities } : item
+              )
+            );
+          } catch (err) {
+            console.error('Failed to detect PII:', err);
+          }
         }
       };
 

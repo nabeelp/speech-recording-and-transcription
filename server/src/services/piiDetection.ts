@@ -46,62 +46,44 @@ export async function detectPii(text: string): Promise<PiiDetectionResult> {
   try {
     const client = getClient();
     const documents = [{ id: '1', language: 'en', text }];
-    
-    const actions = [
-      {
-        kind: 'PiiEntityRecognition' as const,
-        parameters: {
-          domain: 'phi' as const, // Use 'phi' for healthcare or 'none' for general
-          stringIndexType: 'Utf16CodeUnit' as const,
-        },
-      },
-    ];
 
-    const poller = await client.beginAnalyzeBatch(actions, documents, {});
-    const results = await poller.pollUntilDone();
+    // Use the synchronous single-call API — avoids the polling overhead of beginAnalyzeBatch
+    const results = await client.analyze('PiiEntityRecognition', documents, {
+      domainFilter: 'phi',
+      stringIndexType: 'Utf16CodeUnit',
+    });
 
     const entities: PiiEntity[] = [];
     let redactedText = text;
 
-    for await (const actionResult of results) {
-      if (actionResult.kind !== 'PiiEntityRecognition') {
+    for (const doc of results) {
+      if (doc.error) {
+        console.error(`PII detection error for document ${doc.id}:`, doc.error);
         continue;
       }
 
-      if (actionResult.error) {
-        console.error('PII detection action error:', actionResult.error);
-        continue;
-      }
+      if (doc.entities && doc.entities.length > 0) {
+        // Sort entities by offset in descending order for proper replacement
+        const sortedEntities = [...doc.entities].sort((a, b) => b.offset - a.offset);
 
-      for (const doc of actionResult.results) {
-        if (doc.error) {
-          console.error(`PII detection error for document ${doc.id}:`, doc.error);
-          continue;
-        }
-
-        if (doc.entities && doc.entities.length > 0) {
-          // Sort entities by offset in descending order for proper replacement
-          const sortedEntities = [...doc.entities].sort((a, b) => b.offset - a.offset);
-          
-          sortedEntities.forEach((entity) => {
-            entities.push({
-              text: entity.text,
-              category: entity.category,
-              offset: entity.offset,
-              length: entity.length,
-              confidenceScore: entity.confidenceScore,
-            });
-
-            // Replace PII in text with redaction
-            redactedText = 
-              redactedText.substring(0, entity.offset) +
-              '*'.repeat(entity.length) +
-              redactedText.substring(entity.offset + entity.length);
+        sortedEntities.forEach((entity) => {
+          entities.push({
+            text: entity.text,
+            category: entity.category,
+            offset: entity.offset,
+            length: entity.length,
+            confidenceScore: entity.confidenceScore,
           });
 
-          // Reverse back to original order for return
-          entities.reverse();
-        }
+          // Replace PII in text with redaction
+          redactedText =
+            redactedText.substring(0, entity.offset) +
+            '*'.repeat(entity.length) +
+            redactedText.substring(entity.offset + entity.length);
+        });
+
+        // Reverse back to original order for return
+        entities.reverse();
       }
     }
 
