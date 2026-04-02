@@ -15,6 +15,17 @@ export interface PiiDetectionResult {
   redactedText: string;
 }
 
+export interface PiiDetectionOptions {
+  /** Categories to exclude from PII detection results. Case-insensitive. */
+  excludedCategories?: string[];
+}
+
+/**
+ * Default PII categories that are excluded from detection.
+ * These can be overridden per-call via PiiDetectionOptions.
+ */
+export const DEFAULT_EXCLUDED_PII_CATEGORIES: string[] = ['PersonType', 'DateTime', 'Quantity'];
+
 let client: TextAnalysisClient | null = null;
 
 function getClient(): TextAnalysisClient {
@@ -32,9 +43,12 @@ function getClient(): TextAnalysisClient {
 /**
  * Detect PII entities in the provided text using Azure AI Language service
  * @param text The text to analyze for PII
+ * @param options Optional configuration including excluded categories
  * @returns PII detection result with entities and redacted text
  */
-export async function detectPii(text: string): Promise<PiiDetectionResult> {
+export async function detectPii(text: string, options?: PiiDetectionOptions): Promise<PiiDetectionResult> {
+  const excludedCategories = (options?.excludedCategories ?? DEFAULT_EXCLUDED_PII_CATEGORIES)
+    .map((c) => c.toLowerCase());
   if (!text || text.trim().length === 0) {
     return {
       text,
@@ -63,8 +77,11 @@ export async function detectPii(text: string): Promise<PiiDetectionResult> {
       }
 
       if (doc.entities && doc.entities.length > 0) {
-        // Sort entities by offset in descending order for proper replacement
-        const sortedEntities = [...doc.entities].sort((a, b) => b.offset - a.offset);
+        // Filter out excluded categories, then sort by offset descending for proper replacement
+        const filteredEntities = doc.entities.filter(
+          (entity) => !excludedCategories.includes(entity.category.toLowerCase())
+        );
+        const sortedEntities = [...filteredEntities].sort((a, b) => b.offset - a.offset);
 
         sortedEntities.forEach((entity) => {
           entities.push({
