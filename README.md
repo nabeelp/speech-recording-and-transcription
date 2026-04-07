@@ -199,6 +199,73 @@ The POC includes 5 South African mock clients for testing:
 
 ## Architecture
 
+### Service Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Client as React App (Browser)
+    participant Server as Express Server
+    participant Entra as Azure Entra ID
+    participant Speech as Azure Speech Service
+    participant Language as Azure AI Language
+    participant OpenAI as Azure OpenAI (GPT-4)
+    participant Storage as Azure Blob Storage
+    participant DB as Client Database
+
+    User->>Client: Open app
+    Client->>Server: GET /api/clients
+    Server->>DB: getAllClientNames()
+    DB-->>Server: client name list
+    Server-->>Client: { clients: [...] }
+
+    User->>Client: Enter client name
+    Client->>Server: GET /api/client/:name
+    Server->>DB: getClientInfo(name)
+    DB-->>Server: client profile
+    Server-->>Client: ClientInfo (portfolio, goals, risk)
+    Client->>User: Display client profile
+
+    User->>Client: Click "Start Recording"
+    Client->>Server: GET /api/get-speech-token
+    Server->>Entra: getToken("cognitiveservices.azure.com/.default")
+    Entra-->>Server: Entra ID access token
+    Server-->>Client: { token, region, endpoint }
+
+    Client->>Speech: Connect (Conversation Transcriber + token)
+    Note over Client,Speech: Real-time bidirectional stream
+
+    loop During recording
+        User->>Client: Speaks
+        Speech-->>Client: Partial transcription result
+        Client->>User: Display live transcript text
+
+        Speech-->>Client: Final utterance result (+ speaker ID)
+        Client->>Server: POST /api/detect-pii { text }
+        Server->>Language: Analyze text for PII entities
+        Language-->>Server: PII entities (names, phones, etc.)
+        Server-->>Client: { entities, redactedText }
+        Client->>User: Highlight PII in transcript (bold red)
+
+        Note over Client,OpenAI: Every 15 seconds
+        Client->>Server: POST /api/analyze-nba { transcript, clientInfo }
+        Server->>OpenAI: Prompt with transcript + client profile
+        OpenAI-->>Server: NBA suggestions (JSON)
+        Server-->>Client: { suggestions: [...] }
+        Client->>User: Display NBA suggestion cards
+    end
+
+    User->>Client: Click "Stop Recording"
+    Client->>Speech: Disconnect
+    Client->>Server: POST /api/upload-audio (multipart: audio + transcript)
+    Server->>Storage: Upload audio blob (.webm)
+    Storage-->>Server: blob URL
+    Server->>Storage: Upload transcript blob (.txt)
+    Storage-->>Server: blob URL
+    Server-->>Client: { blobName, blobUrl }
+    Client->>User: Show upload confirmation
+```
+
 - **Speech Recognition:** The frontend uses the Azure Speech SDK (`microsoft-cognitiveservices-speech-sdk`) in Conversation Transcriber mode with speaker diarization. Partial and final transcription results are streamed back and displayed live.
 - **PII Detection:** When transcription completes for each utterance, the text is sent to the backend which calls Azure AI Language service to detect PII entities. Detected entities are highlighted in the UI with red, bold text and a wavy underline.
 - **NBA Analysis:** Every 15 seconds during recording, the full transcript and client profile are sent to Azure OpenAI (GPT-4) for analysis. The AI generates 2-4 contextual suggestions that are displayed as cards in the UI.
